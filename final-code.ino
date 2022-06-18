@@ -199,6 +199,7 @@ void revisarSobreCorriente(){
   if (haySobreCorriente() && !timer3Activo){
     digitalWrite(pinIndicadorSobreCorriente, HIGH);
     actualizarTimerYContador();
+    apagarInterrupcionTimer5();
     iniciarInterrupcionTimer3();
     return;
   }
