@@ -116,7 +116,7 @@ void seleccionarEcuacion(float relacionDeCorriente){
     return;
 }
 
-/* void iniciarInterrupcionTimer3(){
+void iniciarInterrupcionTimer3(){
   cli();
   TCCR3A = 0;
   TCCR3B = 0;
@@ -124,17 +124,17 @@ void seleccionarEcuacion(float relacionDeCorriente){
   TIMSK3 |= B00000010;
   OCR3A = (6.25 * tiempoInterrupcionSobreCorriente) - 1;
   sei();
+  timer3Activo = true;
  } 
  
  void apagarInterrupcionTimer3(){
   TIMSK3 &= ~(1 << OCIE1A);
   timer3Activo = false;
  }
- 
- */
+
 
 void guardianMaximoValorContador(){
-  if (contadorMaximoSobreCorriente == 10000)
+  if (contadorMaximoSobreCorriente >= 10000)
   {
     digitalWrite(contadorMaximoAlcanzado, HIGH);
     digitalWrite(pinSalidaDeMotor, LOW);
@@ -148,7 +148,7 @@ void actualizarTimerYContador(float relacionDeCorriente){
     contadorMaximoSobreCorriente++;
     seleccionarEcuacion(relacionDeCorriente);
     //Funcion para actualizar los valores del timer
-    //iniciarInterrupcionTimer3();
+    iniciarInterrupcionTimer3();
     guardianMaximoValorContador();
 }
 
@@ -188,8 +188,17 @@ void revisarSobreCorriente(){
   if (!haySobreCorriente(relacionDeCorriente) && timer3Activo){
     digitalWrite(pinIndicadorSobreCorriente, LOW);
     //Si no hay sobreCorriente desactivamos timer3
-    //apagarInterrupcionTimer3();
+    apagarInterrupcionTimer3();
     //Activamos otro timer para enfriamiento a razón de 1hz
     return;
   }
+}
+
+void setup(){
+  SetupVariables();
+  pinMode(pinSalidaDeMotor, OUTPUT);
+}
+
+void loop(){
+  revisarSobreCorriente();
 }
