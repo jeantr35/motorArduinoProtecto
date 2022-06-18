@@ -26,6 +26,7 @@ boolean timer3Activo;
 boolean estadoEnfriamiento;
 boolean proteccionDeVoltajeActiva;
 boolean modoEnfriamientoActivo;
+boolean apagadoPorCondicionExtrema;
 // StartPinVariables
 int pinDeVoltaje = A0;
 int pinDeCorriente = A8;
@@ -35,12 +36,13 @@ int pinIndicadorSobreCorriente = 24;
 int pinIndicadorMaximoContador = 26;
 int pinIndicadorEnfriamiento = 28;
 
-//Setup de variables valor defecto
-void SetupVariables(){
-  //Voltaje
+// Setup de variables valor defecto
+void SetupVariables()
+{
+  // Voltaje
   tmpoInstVoltaje = 1000;
 
-  //Corriente
+  // Corriente
   mulCorrienteNominalTmpoInv = 1.15;
   corrienteNominal = 2;
   contadorMaximoSobreCorriente = 0;
@@ -48,84 +50,103 @@ void SetupVariables(){
   contadorMaximoAlcanzado = false;
   proteccionDeVoltajeActiva = false;
   timer3Activo = false;
+  tmpoTrabVacio = 50;
+  apagadoPorCondicionExtrema = false;
 }
 
 // Functions here
 
-  //Modulos para protección de voltaje
-float leerVoltaje(){
+// Modulos para protección de voltaje
+float leerVoltaje()
+{
   return analogRead(pinDeVoltaje) * 5.0 / 1023.0;
 }
 
-boolean voltajeNoEsCorrecto(){
+boolean voltajeNoEsCorrecto()
+{
   return voltaje < 3.6 || voltaje > 4.4;
 }
 
-void proteccionDeVoltaje(){
-  if (voltajeNoEsCorrecto() && !proteccionDeVoltajeActiva){
+void proteccionDeVoltaje()
+{
+  if (voltajeNoEsCorrecto() && !proteccionDeVoltajeActiva)
+  {
     digitalWrite(pinIndicadorVoltaje, HIGH);
     proteccionDeVoltajeActiva = true;
     int tiempoInicial = millis();
-    while (millis() - tiempoInicial <= tmpoInstVoltaje){
+    while (millis() - tiempoInicial <= tmpoInstVoltaje)
+    {
       millis();
     }
-    if (voltajeNoEsCorrecto()){
+    if (voltajeNoEsCorrecto())
+    {
       digitalWrite(pinSalidaDeMotor, LOW);
       return;
     }
-    
   }
-  if (!voltajeNoEsCorrecto() && proteccionDeVoltajeActiva){
+  if (!voltajeNoEsCorrecto() && proteccionDeVoltajeActiva)
+  {
     digitalWrite(pinIndicadorVoltaje, LOW);
     proteccionDeVoltajeActiva = false;
   }
 }
 
 // Modulos para protección de corriente
-float leerRelacionDeCorriente(){
+float leerRelacionDeCorriente()
+{
   float current = analogRead(pinDeCorriente) * 30 / 1023.0;
   return current / corrienteNominal;
 }
 
-  //Arrancamos con sobreCorriente
-boolean haySobreCorriente(){
+// Arrancamos con sobreCorriente
+boolean haySobreCorriente()
+{
   return relacionDeCorriente > mulCorrienteNominalTmpoInv;
 }
 
-void seleccionarEcuacion(){
-  if(relacionDeCorriente >= 1 && relacionDeCorriente <= 1.2){
-    tiempoInterrupcionSobreCorriente = -(relacionDeCorriente -1.2) * 100000 + (relacionDeCorriente - 1.1) * 8500;
+void seleccionarEcuacion()
+{
+  if (relacionDeCorriente >= 1 && relacionDeCorriente <= 1.2)
+  {
+    tiempoInterrupcionSobreCorriente = -(relacionDeCorriente - 1.2) * 100000 + (relacionDeCorriente - 1.1) * 8500;
     return;
   }
-  if(relacionDeCorriente > 1.2 && relacionDeCorriente <= 1.3){
-    tiempoInterrupcionSobreCorriente= -(relacionDeCorriente -1.3) * 8500 + (relacionDeCorriente -1.2) * 2800;
+  if (relacionDeCorriente > 1.2 && relacionDeCorriente <= 1.3)
+  {
+    tiempoInterrupcionSobreCorriente = -(relacionDeCorriente - 1.3) * 8500 + (relacionDeCorriente - 1.2) * 2800;
     return;
   }
-  if(relacionDeCorriente > 1.3 && relacionDeCorriente <= 1.5){
-    tiempoInterrupcionSobreCorriente = (relacionDeCorriente -1.4)*(relacionDeCorriente-1.5)*14000-(relacionDeCorriente-1.3)*(relacionDeCorriente-1-5)*17000 + (relacionDeCorriente -1.3)*(relacionDeCorriente-1.4)*6500;
+  if (relacionDeCorriente > 1.3 && relacionDeCorriente <= 1.5)
+  {
+    tiempoInterrupcionSobreCorriente = (relacionDeCorriente - 1.4) * (relacionDeCorriente - 1.5) * 14000 - (relacionDeCorriente - 1.3) * (relacionDeCorriente - 1 - 5) * 17000 + (relacionDeCorriente - 1.3) * (relacionDeCorriente - 1.4) * 6500;
     return;
   }
-  if(relacionDeCorriente > 1.5 && relacionDeCorriente <= 2){
-    tiempoInterrupcionSobreCorriente = (relacionDeCorriente-1.8)*(relacionDeCorriente-2)*866.6667-(relacionDeCorriente-1.5)*(relacionDeCorriente-2)*1250+(relacionDeCorriente-1.5)*(relacionDeCorriente -1.8)*600;
+  if (relacionDeCorriente > 1.5 && relacionDeCorriente <= 2)
+  {
+    tiempoInterrupcionSobreCorriente = (relacionDeCorriente - 1.8) * (relacionDeCorriente - 2) * 866.6667 - (relacionDeCorriente - 1.5) * (relacionDeCorriente - 2) * 1250 + (relacionDeCorriente - 1.5) * (relacionDeCorriente - 1.8) * 600;
     return;
   }
-  if(relacionDeCorriente > 2 && relacionDeCorriente <= 4){
-    tiempoInterrupcionSobreCorriente = (relacionDeCorriente-3)*(relacionDeCorriente-4)*30-(relacionDeCorriente-2)*(relacionDeCorriente-4)*24+(relacionDeCorriente-2)*(relacionDeCorriente-3)*7;
+  if (relacionDeCorriente > 2 && relacionDeCorriente <= 4)
+  {
+    tiempoInterrupcionSobreCorriente = (relacionDeCorriente - 3) * (relacionDeCorriente - 4) * 30 - (relacionDeCorriente - 2) * (relacionDeCorriente - 4) * 24 + (relacionDeCorriente - 2) * (relacionDeCorriente - 3) * 7;
     return;
   }
-  if(relacionDeCorriente > 4 && relacionDeCorriente <= 7){
-    tiempoInterrupcionSobreCorriente = (relacionDeCorriente-5)*(relacionDeCorriente-7)*4.6666-(relacionDeCorriente-4)*(relacionDeCorriente-7)*5+(relacionDeCorriente-4)*(relacionDeCorriente-5)*1.0666;
+  if (relacionDeCorriente > 4 && relacionDeCorriente <= 7)
+  {
+    tiempoInterrupcionSobreCorriente = (relacionDeCorriente - 5) * (relacionDeCorriente - 7) * 4.6666 - (relacionDeCorriente - 4) * (relacionDeCorriente - 7) * 5 + (relacionDeCorriente - 4) * (relacionDeCorriente - 5) * 1.0666;
     return;
   }
-  if(relacionDeCorriente > 7 && relacionDeCorriente <= 12){
-    tiempoInterrupcionSobreCorriente = (relacionDeCorriente-10)*(relacionDeCorriente-12)*0.4266-(relacionDeCorriente-7)*(relacionDeCorriente-12)*0.6833+(relacionDeCorriente-7)*(relacionDeCorriente-10)*0.32;
+  if (relacionDeCorriente > 7 && relacionDeCorriente <= 12)
+  {
+    tiempoInterrupcionSobreCorriente = (relacionDeCorriente - 10) * (relacionDeCorriente - 12) * 0.4266 - (relacionDeCorriente - 7) * (relacionDeCorriente - 12) * 0.6833 + (relacionDeCorriente - 7) * (relacionDeCorriente - 10) * 0.32;
     return;
   }
-    tiempoInterrupcionSobreCorriente = 3.2;
-    return;
+  tiempoInterrupcionSobreCorriente = 3.2;
+  return;
 }
 
-void iniciarInterrupcionTimer3(){
+void iniciarInterrupcionTimer3()
+{
   cli();
   TCCR3A = 0;
   TCCR3B = 0;
@@ -134,15 +155,16 @@ void iniciarInterrupcionTimer3(){
   OCR3A = (6.25 * tiempoInterrupcionSobreCorriente) - 1;
   sei();
   timer3Activo = true;
- } 
- 
- void apagarInterrupcionTimer3(){
+}
+
+void apagarInterrupcionTimer3()
+{
   TIMSK3 &= ~(1 << OCIE1A);
   timer3Activo = false;
- }
+}
 
-
-void guardianMaximoValorContador(){
+void guardianMaximoValorContador()
+{
   if (contadorMaximoSobreCorriente >= 10000)
   {
     contadorMaximoAlcanzado = true;
@@ -151,28 +173,30 @@ void guardianMaximoValorContador(){
     apagarInterrupcionTimer3();
     return;
   }
-  
 }
 
-void actualizarTimerYContador(){
+void actualizarTimerYContador()
+{
   if (contadorMaximoSobreCorriente < 10000)
   {
     contadorMaximoSobreCorriente++;
     seleccionarEcuacion();
-    //Funcion para actualizar los valores del timer
+    // Funcion para actualizar los valores del timer
     iniciarInterrupcionTimer3();
     guardianMaximoValorContador();
   }
 }
 
-ISR(TIMER3_COMPA_vect){ //Interrupción usada para validar corriente según el tiempo dado
+ISR(TIMER3_COMPA_vect)
+{ // Interrupción usada para validar corriente según el tiempo dado
   actualizarTimerYContador();
-  TCNT3  = 0;
+  TCNT3 = 0;
 }
 
-//Modo enfriamiento
+// Modo enfriamiento
 
-void guardianValorCeroContador(){
+void guardianValorCeroContador()
+{
   if (contadorMaximoSobreCorriente == 0)
   {
     contadorMaximoAlcanzado = false;
@@ -182,10 +206,10 @@ void guardianValorCeroContador(){
 
     return;
   }
-  
 }
 
-void modoEnfriamiento(){
+void modoEnfriamiento()
+{
   if (contadorMaximoSobreCorriente > 0)
   {
     contadorMaximoSobreCorriente--;
@@ -195,28 +219,35 @@ void modoEnfriamiento(){
   guardianValorCeroContador();
 }
 
-void revisarSobreCorriente(){
-  if (haySobreCorriente() && !timer3Activo){
+void revisarSobreCorriente()
+{
+  if (haySobreCorriente() && !timer3Activo && !apagadoPorCondicionExtrema)
+  {
     digitalWrite(pinIndicadorSobreCorriente, HIGH);
     actualizarTimerYContador();
+    estadoEnfriamiento = false;
+    digitalWrite(pinIndicadorEnfriamiento, estadoEnfriamiento);
     apagarInterrupcionTimer5();
     iniciarInterrupcionTimer3();
     return;
   }
-  if (!haySobreCorriente()){
+  if (!haySobreCorriente() && !hayMarchaEnVacio())
+  {
+    
     digitalWrite(pinIndicadorSobreCorriente, LOW);
-    //Si no hay sobreCorriente desactivamos timer3
-    if (timer3Activo)
+    // Si no hay sobreCorriente desactivamos timer3
+    if (timer3Activo && !apagadoPorCondicionExtrema)
     {
       apagarInterrupcionTimer3();
+      iniciarTimerDeUnSegundo();
     }
-    iniciarTimerDeUnSegundo();
-    //Activamos otro timer para enfriamiento a razón de 1hz
+    // Activamos otro timer para enfriamiento a razón de 1hz
     return;
   }
 }
 
-void iniciarTimerDeUnSegundo(){
+void iniciarTimerDeUnSegundo()
+{
   cli();
   TCCR5A = 0;
   TCCR5B = 0;
@@ -225,21 +256,77 @@ void iniciarTimerDeUnSegundo(){
   OCR5A = (6.25 * 62499) - 1;
   sei();
   modoEnfriamientoActivo = true;
- }
+}
 
-void apagarInterrupcionTimer5(){
+void apagarInterrupcionTimer5()
+{
   TIMSK5 &= ~(1 << OCIE5A);
   modoEnfriamientoActivo = false;
- }
+}
 
-ISR(TIMER5_COMPA_vect){ //Interrupción encargada de enfriar a razon de 1 hz
-  TCNT5  = 0;
+ISR(TIMER5_COMPA_vect)
+{ // Interrupción encargada de enfriar a razon de 1 hz
+  TCNT5 = 0;
   modoEnfriamiento();
 }
 
-//Lector de voltaje y corriente
+// Protección por corriente instantaneas
 
-void setupTimerInterruption(){
+boolean hayMarchaEnVacio(){
+  if (relacionDeCorriente < 0.3){
+    int tiempoInicial = millis();
+    while (millis() - tiempoInicial <= tmpoTrabVacio)
+    {
+      millis();
+    }
+    if (relacionDeCorriente < 0.3)
+    {
+      return true;
+    }
+  }
+return false;
+}
+
+boolean haySobreCorrienteInstantanea(){
+  if (relacionDeCorriente > 12)
+  {
+    int tiempoInicial = millis();
+    while (millis() - tiempoInicial <= tmpoTrabVacio)
+    {
+      millis();
+    }
+    if (relacionDeCorriente > 12)
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+void protegerPorCorrientesExtremas(){
+  if (haySobreCorrienteInstantanea() || hayMarchaEnVacio())
+  {
+    apagarInterrupcionTimer3();
+    apagarInterrupcionTimer5();
+    contadorMaximoSobreCorriente = 0;
+    estadoEnfriamiento = false;
+    apagadoPorCondicionExtrema = true;
+    digitalWrite(pinIndicadorEnfriamiento, estadoEnfriamiento);
+    digitalWrite(pinIndicadorSobreCorriente, HIGH);
+    digitalWrite(pinSalidaDeMotor, false);
+  }
+  
+}
+
+void protectorDeCorriente(){
+  revisarSobreCorriente();
+  protegerPorCorrientesExtremas();
+}
+
+// Lector de voltaje y corriente
+
+void setupTimerInterruption()
+{
   cli();
   TCCR1A = 0;
   TCCR1B = 0;
@@ -247,18 +334,16 @@ void setupTimerInterruption(){
   TIMSK1 |= B00000010;
   OCR1A = (6.25 * 5) - 1;
   sei();
-  
- }
+}
 
-ISR(TIMER1_COMPA_vect){ //Interrupción encargada de solo leer voltaje y corriente
-  TCNT1  = 0;
+ISR(TIMER1_COMPA_vect){ // Interrupción encargada de solo leer voltaje y corriente
+  TCNT1 = 0;
   relacionDeCorriente = leerRelacionDeCorriente();
   voltaje = leerVoltaje();
 }
 
-
-
-void setup(){
+void setup()
+{
   Serial.begin(9600);
   SetupVariables();
   setupTimerInterruption();
@@ -268,8 +353,8 @@ void setup(){
   digitalWrite(pinIndicadorVoltaje, false);
 }
 
-void loop(){
-  Serial.println(contadorMaximoSobreCorriente);
-  revisarSobreCorriente();
+void loop()
+{
+  protectorDeCorriente();
   proteccionDeVoltaje();
 }
