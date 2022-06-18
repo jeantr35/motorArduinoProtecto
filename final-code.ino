@@ -25,6 +25,7 @@ boolean contadorMaximoAlcanzado;
 boolean timer3Activo;
 boolean estadoEnfriamiento;
 boolean proteccionDeVoltajeActiva;
+boolean modoEnfriamientoActivo;
 // StartPinVariables
 int pinDeVoltaje = A0;
 int pinDeCorriente = A8;
@@ -174,17 +175,23 @@ ISR(TIMER3_COMPA_vect){ //Interrupción usada para validar corriente según el t
 void guardianValorCeroContador(){
   if (contadorMaximoSobreCorriente == 0)
   {
-    digitalWrite(contadorMaximoAlcanzado, LOW);
-    //Apagamos timer de 1Hz
+    contadorMaximoAlcanzado = false;
+    digitalWrite(pinIndicadorMaximoContador, contadorMaximoAlcanzado);
+    digitalWrite(pinIndicadorEnfriamiento, false);
+    apagarInterrupcionTimer5();
+
     return;
   }
   
 }
 
 void modoEnfriamiento(){
-  contadorMaximoSobreCorriente--;
-  estadoEnfriamiento = !estadoEnfriamiento;
-  digitalWrite(pinIndicadorEnfriamiento, estadoEnfriamiento);
+  if (contadorMaximoSobreCorriente > 0)
+  {
+    contadorMaximoSobreCorriente--;
+    estadoEnfriamiento = !estadoEnfriamiento;
+    digitalWrite(pinIndicadorEnfriamiento, estadoEnfriamiento);
+  }
   guardianValorCeroContador();
 }
 
@@ -192,7 +199,7 @@ void revisarSobreCorriente(){
   if (haySobreCorriente() && !timer3Activo){
     digitalWrite(pinIndicadorSobreCorriente, HIGH);
     actualizarTimerYContador();
-    //iniciarInterrupcionTimer3();
+    iniciarInterrupcionTimer3();
     return;
   }
   if (!haySobreCorriente()){
@@ -202,9 +209,31 @@ void revisarSobreCorriente(){
     {
       apagarInterrupcionTimer3();
     }
+    iniciarTimerDeUnSegundo();
     //Activamos otro timer para enfriamiento a razón de 1hz
     return;
   }
+}
+
+void iniciarTimerDeUnSegundo(){
+  cli();
+  TCCR5A = 0;
+  TCCR5B = 0;
+  TCCR5B |= B00000100;
+  TIMSK5 |= B00000010;
+  OCR5A = (6.25 * 62499) - 1;
+  sei();
+  modoEnfriamientoActivo = true;
+ }
+
+void apagarInterrupcionTimer5(){
+  TIMSK5 &= ~(1 << OCIE5A);
+  modoEnfriamientoActivo = false;
+ }
+
+ISR(TIMER5_COMPA_vect){ //Interrupción encargada de enfriar a razon de 1 hz
+  TCNT5  = 0;
+  modoEnfriamiento();
 }
 
 //Lector de voltaje y corriente
@@ -225,6 +254,8 @@ ISR(TIMER1_COMPA_vect){ //Interrupción encargada de solo leer voltaje y corrien
   relacionDeCorriente = leerRelacionDeCorriente();
   voltaje = leerVoltaje();
 }
+
+
 
 void setup(){
   Serial.begin(9600);
