@@ -19,9 +19,12 @@ int tmpoTrabVacio;
 float factorDeServicio;
 float tiempoInterrupcionSobreCorriente;
 int contadorMaximoSobreCorriente;
+float voltaje;
+float relacionDeCorriente;
 boolean contadorMaximoAlcanzado;
 boolean timer3Activo;
 boolean estadoEnfriamiento;
+boolean proteccionDeVoltajeActiva;
 // StartPinVariables
 int pinDeVoltaje = A0;
 int pinDeCorriente = A8;
@@ -42,6 +45,7 @@ void SetupVariables(){
   contadorMaximoSobreCorriente = 0;
   estadoEnfriamiento = false;
   contadorMaximoAlcanzado = false;
+  proteccionDeVoltajeActiva = false;
   timer3Activo = false;
 }
 
@@ -52,23 +56,27 @@ float leerVoltaje(){
   return analogRead(pinDeVoltaje) * 5.0 / 1023.0;
 }
 
-boolean voltajeNoEsCorrecto(float voltaje){
-  return voltaje <= 3.6 || voltaje >= 4.4;
+boolean voltajeNoEsCorrecto(){
+  return voltaje < 3.6 || voltaje > 4.4;
 }
 
 void proteccionDeVoltaje(){
-  float voltaje = leerVoltaje();
-  if (voltajeNoEsCorrecto){
+  if (voltajeNoEsCorrecto() && !proteccionDeVoltajeActiva){
     digitalWrite(pinIndicadorVoltaje, HIGH);
+    proteccionDeVoltajeActiva = true;
     int tiempoInicial = millis();
     while (millis() - tiempoInicial <= tmpoInstVoltaje){
       millis();
     }
-    if (voltajeNoEsCorrecto){
+    if (voltajeNoEsCorrecto()){
       digitalWrite(pinSalidaDeMotor, LOW);
       return;
     }
+    
+  }
+  if (!voltajeNoEsCorrecto() && proteccionDeVoltajeActiva){
     digitalWrite(pinIndicadorVoltaje, LOW);
+    proteccionDeVoltajeActiva = false;
   }
 }
 
@@ -79,11 +87,11 @@ float leerRelacionDeCorriente(){
 }
 
   //Arrancamos con sobreCorriente
-boolean haySobreCorriente(float relacionDeCorriente){
+boolean haySobreCorriente(){
   return relacionDeCorriente > mulCorrienteNominalTmpoInv;
 }
 
-void seleccionarEcuacion(float relacionDeCorriente){
+void seleccionarEcuacion(){
   if(relacionDeCorriente >= 1 && relacionDeCorriente <= 1.2){
     tiempoInterrupcionSobreCorriente = -(relacionDeCorriente -1.2) * 100000 + (relacionDeCorriente - 1.1) * 8500;
     return;
@@ -136,26 +144,29 @@ void iniciarInterrupcionTimer3(){
 void guardianMaximoValorContador(){
   if (contadorMaximoSobreCorriente >= 10000)
   {
-    digitalWrite(contadorMaximoAlcanzado, HIGH);
+    contadorMaximoAlcanzado = true;
+    digitalWrite(pinIndicadorMaximoContador, contadorMaximoAlcanzado);
     digitalWrite(pinSalidaDeMotor, LOW);
-    //apagarInterrupcionTimer3();
+    apagarInterrupcionTimer3();
     return;
   }
   
 }
 
-void actualizarTimerYContador(float relacionDeCorriente){
+void actualizarTimerYContador(){
+  if (contadorMaximoSobreCorriente < 10000)
+  {
     contadorMaximoSobreCorriente++;
-    seleccionarEcuacion(relacionDeCorriente);
+    seleccionarEcuacion();
     //Funcion para actualizar los valores del timer
     iniciarInterrupcionTimer3();
     guardianMaximoValorContador();
+  }
 }
 
 ISR(TIMER3_COMPA_vect){ //Interrupción usada para validar corriente según el tiempo dado
-  float relacionDeCorriente = leerRelacionDeCorriente();
-  actualizarTimerYContador(relacionDeCorriente);
-  //TCNT3  = 0;
+  actualizarTimerYContador();
+  TCNT3  = 0;
 }
 
 //Modo enfriamiento
@@ -178,27 +189,55 @@ void modoEnfriamiento(){
 }
 
 void revisarSobreCorriente(){
-  float relacionDeCorriente = leerRelacionDeCorriente();
-  if (haySobreCorriente(relacionDeCorriente) && !timer3Activo){
+  if (haySobreCorriente() && !timer3Activo){
     digitalWrite(pinIndicadorSobreCorriente, HIGH);
-    actualizarTimerYContador(relacionDeCorriente);
+    actualizarTimerYContador();
     //iniciarInterrupcionTimer3();
     return;
   }
-  if (!haySobreCorriente(relacionDeCorriente) && timer3Activo){
+  if (!haySobreCorriente()){
     digitalWrite(pinIndicadorSobreCorriente, LOW);
     //Si no hay sobreCorriente desactivamos timer3
-    apagarInterrupcionTimer3();
+    if (timer3Activo)
+    {
+      apagarInterrupcionTimer3();
+    }
     //Activamos otro timer para enfriamiento a razón de 1hz
     return;
   }
 }
 
+//Lector de voltaje y corriente
+
+void setupTimerInterruption(){
+  cli();
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCCR1B |= B00000100;
+  TIMSK1 |= B00000010;
+  OCR1A = (6.25 * 5) - 1;
+  sei();
+  
+ }
+
+ISR(TIMER1_COMPA_vect){ //Interrupción encargada de solo leer voltaje y corriente
+  TCNT1  = 0;
+  relacionDeCorriente = leerRelacionDeCorriente();
+  voltaje = leerVoltaje();
+}
+
 void setup(){
+  Serial.begin(9600);
   SetupVariables();
+  setupTimerInterruption();
   pinMode(pinSalidaDeMotor, OUTPUT);
+  pinMode(pinIndicadorVoltaje, OUTPUT);
+  digitalWrite(pinSalidaDeMotor, true);
+  digitalWrite(pinIndicadorVoltaje, false);
 }
 
 void loop(){
+  Serial.println(contadorMaximoSobreCorriente);
   revisarSobreCorriente();
+  proteccionDeVoltaje();
 }
