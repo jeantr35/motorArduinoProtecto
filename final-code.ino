@@ -25,6 +25,16 @@ int tiempoPresionadoDeArranqueAnterior;
 int tiempoDeArranqueInicial;
 int numeroDeArranquesPermitidos;
 int tiempoEsperaDeInicio;
+int tiempoAnterior;
+int tiempoActual;
+int voltajeSuperiorFallaCritica;
+int voltajeSuperiorFallaTiempoConstante;
+int voltajeInferiorFallaCritica;
+int voltajeInferiorFallaTiempoConstante;
+int maximoVoltajeARecibir;
+int tiempoInicioFallaTiempoConstante;
+int tiempoActualFallaTiempoConstante;
+int tiempoEnFallaConstante;
 int_fast64_t tiempoMultiplesArranques;
 boolean contadorMaximoAlcanzado;
 boolean timer3Activo;
@@ -33,6 +43,7 @@ boolean proteccionDeVoltajeActiva;
 boolean modoEnfriamientoActivo;
 boolean apagadoPorCondicionExtrema;
 boolean motorIniciado;
+boolean proteccionDeVoltajeInstantaneaActiva;
 // StartPinVariables
 int pinDeVoltaje = A0;
 int pinDeCorriente = A8;
@@ -44,10 +55,18 @@ int pinIndicadorEnfriamiento = 28;
 int pinInterrupcionDeArranque = 3;
 
 // Setup de variables valor defecto
+//Ajustar tiempo de marcha en vacio
 void SetupVariables()
 {
   // Voltaje
   tmpoInstVoltaje = 1000;
+  voltajeSuperiorFallaCritica = 140;
+  voltajeSuperiorFallaTiempoConstante = 130;
+  voltajeInferiorFallaCritica = 70;
+  voltajeInferiorFallaTiempoConstante = 90;
+  maximoVoltajeARecibir = 150;
+  proteccionDeVoltajeInstantaneaActiva = false;
+  tiempoEnFallaConstante = 20;
 
   // Corriente
   mulCorrienteNominalTmpoInv = 1.15;
@@ -67,6 +86,7 @@ void SetupVariables()
   tiempoEsperaDeInicio = 4000;
   tiempoPresionadoDeArranqueAnterior = millis();
   motorIniciado = false;
+  tiempoAnterior = millis();
 }
 
 // Functions here
@@ -74,20 +94,30 @@ void SetupVariables()
 // Modulos para protección de voltaje
 float leerVoltaje()
 {
-  return analogRead(pinDeVoltaje) * 5.0 / 1023.0;
+  float lecturaEnVoltios = analogRead(pinDeVoltaje) * 5.0 / 1023.0;
+  return lecturaEnVoltios * 150 / 5;
 }
 
 boolean voltajeNoEsCorrecto()
 {
-  return voltaje < 3.6 || voltaje > 4.4;
+  return voltaje < voltajeInferiorFallaTiempoConstante || voltaje > voltajeSuperiorFallaTiempoConstante;
 }
+
+boolean desconexionInstantanea(){
+  return voltaje < voltajeInferiorFallaCritica || voltaje > voltajeSuperiorFallaCritica;
+}
+
+//Arranca sin importar la falla desde 0
+//Lo sacamos de ese modo apenas se acabe el tiempo
+//Hay trabajo normal, falla y desconexión instantanea
+//Pasar el voltaje recibido a voltios
 
 void proteccionDeVoltaje()
 {
-  if (voltajeNoEsCorrecto() && !proteccionDeVoltajeActiva)
+  if (desconexionInstantanea() && !proteccionDeVoltajeInstantaneaActiva)
   {
     digitalWrite(pinIndicadorVoltaje, HIGH);
-    proteccionDeVoltajeActiva = true;
+    proteccionDeVoltajeInstantaneaActiva = true;
     int tiempoInicial = millis();
     while (millis() - tiempoInicial <= tmpoInstVoltaje)
     {
@@ -95,14 +125,39 @@ void proteccionDeVoltaje()
     }
     if (voltajeNoEsCorrecto())
     {
+      motorIniciado = false;
       digitalWrite(pinSalidaDeMotor, LOW);
       return;
     }
   }
-  if (!voltajeNoEsCorrecto() && proteccionDeVoltajeActiva)
+  if (voltajeNoEsCorrecto() && !proteccionDeVoltajeActiva)
+  {
+    digitalWrite(pinIndicadorVoltaje, HIGH);
+    proteccionDeVoltajeActiva = true;
+    tiempoInicioFallaTiempoConstante = millis()/1000;
+    return;
+  }
+  if (proteccionDeVoltajeActiva)
+  {
+    tiempoActualFallaTiempoConstante = millis()/1000;
+    if (!voltajeNoEsCorrecto())
+    {
+      digitalWrite(pinIndicadorVoltaje, LOW);
+      proteccionDeVoltajeActiva = false;
+      return;
+    }
+    
+    if (voltajeNoEsCorrecto() && tiempoActualFallaTiempoConstante - tiempoInicioFallaTiempoConstante >= tiempoEnFallaConstante) 
+    {
+      motorIniciado = false;
+      digitalWrite(pinSalidaDeMotor, LOW);
+      return;
+    }
+  } 
+  if (proteccionDeVoltajeInstantaneaActiva)
   {
     digitalWrite(pinIndicadorVoltaje, LOW);
-    proteccionDeVoltajeActiva = false;
+    proteccionDeVoltajeInstantaneaActiva = false;
   }
 }
 
@@ -369,6 +424,21 @@ boolean proteccionAntirebote(){
   return true;
 }
 
+ void setupTimer2Interruption(){
+  cli();
+  TCCR2A = 0;
+  TCCR2B = 0;
+  TCCR2B |= B00000101;
+  TIMSK2 |= B00000010;
+  OCR2A = 255;
+  sei();
+ }
+
+ISR(TIMER2_COMPA_vect){ //Interrupción encargada de actualizar la función miliis (Usada para tiempos fijos)
+  TCNT2  = 0;
+  tiempoActual = millis();
+}
+
 boolean proteccionArranqueRepetido(){
   if (numeroDeArranques == 1)
   {
@@ -386,10 +456,12 @@ boolean corrienteDeArranqueNoEsCorrecto(){
 
 void logicaDeArranque(){
     digitalWrite(pinSalidaDeMotor, true);
-    int tiempoActual = millis();
-    while (millis() - tiempoActual < tiempoEsperaDeInicio)
+    tiempoAnterior = millis();
+    tiempoActual = millis();
+    setupTimer2Interruption();
+    while (tiempoActual - tiempoAnterior < tiempoEsperaDeInicio)
     {
-      millis();
+      tiempoActual = millis();
     }
     if (voltajeNoEsCorrecto() || corrienteDeArranqueNoEsCorrecto())
     {
@@ -403,13 +475,16 @@ void logicaDeArranque(){
 }
 
 void funcionDeArranque(){
-  if(digitalRead(pinInterrupcionDeArranque) && !apagadoPorCondicionExtrema){
+  delay(10);
+  Serial.println(digitalRead(pinInterrupcionDeArranque));
+  if(digitalRead(pinInterrupcionDeArranque) && !apagadoPorCondicionExtrema && contadorMaximoSobreCorriente <= 0){
     if (!proteccionAntirebote() && !proteccionArranqueRepetido())
     {
       logicaDeArranque();
     }
   return;
   }
+  apagarInterrupcionTimer3();
   motorIniciado = false;
   digitalWrite(pinSalidaDeMotor, false);
 }
@@ -421,7 +496,7 @@ void setup()
   setupTimerInterruption();
   pinMode(pinSalidaDeMotor, OUTPUT);
   pinMode(pinIndicadorVoltaje, OUTPUT);
-  digitalWrite(pinSalidaDeMotor, true);
+  digitalWrite(pinSalidaDeMotor, false);
   digitalWrite(pinIndicadorVoltaje, false);
   attachInterrupt(digitalPinToInterrupt(pinInterrupcionDeArranque), funcionDeArranque, CHANGE);
 
@@ -429,6 +504,10 @@ void setup()
 
 void loop()
 {
-  protectorDeCorriente();
-  proteccionDeVoltaje();
+  if (motorIniciado)
+  {
+    protectorDeCorriente();
+    proteccionDeVoltaje();
+  }
+  
 }
